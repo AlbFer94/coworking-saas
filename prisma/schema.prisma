@@ -1,0 +1,70 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider  = "postgresql"
+}
+
+model Tenant {
+  id        String    @id @default(uuid()) 
+  name      String                        
+  slug      String    @unique  
+  status    String    @default("INACTIVE")            
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  users     User[]
+  rooms     Room[]
+  bookings  Booking[]
+
+  @@index([slug]) 
+}
+
+model User {
+  id        String   @id @default(uuid()) 
+  firstName String
+  lastName  String
+  email     String  @unique
+  role      String  @default("MEMBER")
+  tenantId  String 
+  tenant    Tenant  @relation(fields:[tenantId], references:[id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  credits   Int     @default(10) 
+
+  @@unique([tenantId, email])
+}
+
+model Room {
+  id        Int    @id @default(autoincrement())
+  name      String // Es: "Sala proiezioni"
+  price     Float  // Es: 25.00
+  duration  Int    // Durata in minuti, es: 60
+  tenantId  String
+  tenant    Tenant  @relation(fields:[tenantId], references:[id], onDelete: Cascade)
+  bookings  Booking[]
+}
+
+model Booking {
+  id        Int      @id @default(autoincrement())
+  name      String
+  email     String
+  phone     String
+  startTime DateTime // Usa DateTime per gestire meglio i giorni
+  endTime   DateTime
+  tenantId  String
+  roomId    Int
+  room      Room     @relation(fields:[roomId], references:[id], onDelete: Cascade)
+  tenant    Tenant  @relation(fields:[tenantId], references:[id], onDelete: Cascade)
+  status    String   @default("PENDING") // PENDING, APPROVED, REJECTED
+  createdAt DateTime @default(now())
+}
+
+
+
