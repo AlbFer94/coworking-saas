@@ -6,6 +6,7 @@ import {supabase} from "./supabase.js";
 import { requireAuth, checkRole } from './middlewares/auth.js';
 import { stripe, webhookSecret } from './stripe.js';
 import { requireActiveSubscription } from './middlewares/billing.js';
+import { isExclusionViolationError } from './lib/errors.js'; // Importa la funzione di type guard
 
 
 
@@ -231,7 +232,7 @@ app.post("/api/rooms", requireAuth, checkRole(['TENANTADMIN']), requireActiveSub
         }
     } );
 
-    //Rotta di prenotazione stanza(Room) con controllo di sovrapposizione prenotazioni
+    //Rotta di prenotazione stanza(Room) con controllo di sovrapposizione prenotazioni e decremento dei crediti dell'utente in una transazione atomica
     app.post("/api/bookings", requireAuth, requireActiveSubscription, async (req:Request, res:Response)=>{
 
         const {roomId, startTime, endTime, name, email, phone}=req.body;
@@ -250,7 +251,7 @@ app.post("/api/rooms", requireAuth, checkRole(['TENANTADMIN']), requireActiveSub
                 return res.status(400).json({error:"L'orario di inizio deve essere precedente a quello di fine."});
             }
 
-            //Controllo di sovrapposizione prenotazioni (anti-overlapping)
+            //Controllo di sovrapposizione prenotazioni (anti-overlapping) solo per Fail Fast, il vero blocco è su constraint di esclusione in Postgres
             const overlappingBooking= await prisma.booking.findFirst({
                 where:{
                     roomId:Number(roomId), //controlla la stessa stanza
@@ -287,22 +288,21 @@ app.post("/api/rooms", requireAuth, checkRole(['TENANTADMIN']), requireActiveSub
                 return res.status(401).json({error:"Identificativo utente non trovato."});
             }
 
-            //Controllo dei crediti prima di creare la prenotazione e implemnta prisma.transaction
+            //Controllo dei crediti dell'utente e creazione della prenotazione in una transazione atomica
             const newBooking=await prisma.$transaction(async (tx) => {
-                const creditBalance= await tx.user.findUnique({
-                    where:{id:userId},
-                    select:{credits:true} // Recupera solo il campo credits
+                const creditBalance= await tx.user.updateMany({
+                    where:{
+                        id:userId,
+                        credits:{gt:0} //controlla che l'utente abbia crediti disponibili
+                    },
+                    data:{
+                        credits:{decrement:1}
+                    }
                 });
 
-                if(!creditBalance || creditBalance.credits<=0){
-                    throw new Error("crediti insufficienti per effettuare la prenotazione.");
+                if(creditBalance.count===0){
+                    throw new Error("CREDITO_INSUFFICENTE");
                 }
-
-                //Decrementa i crediti dell'utente 1 per prenotazione.
-                await tx.user.update({
-                    where:{id:userId},
-                    data:{credits:{decrement:1}}
-                });
 
                 //Crea la prenotazione direttamente nel contesto della transazione
                 const booking= await tx.booking.create({
@@ -313,7 +313,6 @@ app.post("/api/rooms", requireAuth, checkRole(['TENANTADMIN']), requireActiveSub
                         name,
                         email,
                         phone,
-                        userId:userId,
                         tenantId:tenantId
                     }
                 });
@@ -335,7 +334,13 @@ app.post("/api/rooms", requireAuth, checkRole(['TENANTADMIN']), requireActiveSub
             return res.status(201).json({message:"Prenotazione creata con successo", booking:newBooking});
         } catch (error) {
             console.error('Errore creazione prenotazione', error);
-            return res.status(500).json({error:'Errore interno durante la creazione della prenotazione.'});
+            if(isExclusionViolationError (error) && error.cause.code=== '23P01'){
+                return res.status(409).json({error:"Impossibile prenotare. La stanza è già occupata in questo intervallo di tempo."});
+            } else if (error instanceof Error && error.message === 'CREDITO_INSUFFICENTE') {
+                return res.status(400).json({error:"Credito insufficente per effettuare la prenotazione."});
+            } else {
+                return res.status(500).json({error:'Errore interno durante la creazione della prenotazione.'});
+            }
         }
     });
 
