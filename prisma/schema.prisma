@@ -6,10 +6,12 @@
 generator client {
   provider = "prisma-client-js"
   output   = "../generated/prisma"
+  previewFeatures= ["postgresqlExtensions"] // Abilita la feature preview di Prisma per le estensioni
 }
 
 datasource db {
   provider  = "postgresql"
+  extensions=[btree_gist] //abilita l'estensione tramite l'ORM
 }
 
 model Tenant {
@@ -58,6 +60,7 @@ model Booking {
   phone     String
   startTime DateTime // Usa DateTime per gestire meglio i giorni
   endTime   DateTime
+  range     Unsupported("tsrange") // Usa tsrange filtrando per range temporali in query applicative
   tenantId  String
   roomId    Int
   room      Room     @relation(fields:[roomId], references:[id], onDelete: Cascade)

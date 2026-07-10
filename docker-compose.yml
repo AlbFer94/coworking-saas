@@ -1,0 +1,22 @@
+
+services:
+  postgres_test:
+    image: postgres:16-alpine # Uso una versione stabile e leggera
+    container_name: coworking_postgres_test
+    environment:
+      POSTGRES_USER: test_user
+      POSTGRES_PASSWORD: test_password
+      POSTGRES_DB: coworking_test_db
+    ports:
+      - "5433:5432" # Obiettivo 1: Mappa la porta interna 5432 sulla 5433 del mio PC
+    volumes:
+      - pg_test_data:/var/lib/postgresql/data #crea un volume persistente per i dati del database
+
+    # Obiettivo 2: Avvia Postgres e installa l'estensione btree_gist automaticamente
+    command: >
+      postgres -c max_connections=100
+      -c shared_buffers=128MB
+      -c listen_addresses='*'
+
+volumes:
+  pg_test_data:
