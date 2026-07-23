@@ -38,7 +38,9 @@ model User {
   tenant    Tenant  @relation(fields:[tenantId], references:[id], onDelete: Cascade)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-  credits   Int     @default(10) 
+  deletedAt DateTime?
+  credits   Int     @default(10)
+  bookings  Booking[]
 
   @@unique([tenantId, email])
 }
@@ -59,12 +61,19 @@ model Booking {
   email     String
   phone     String
   startTime DateTime // Usa DateTime per gestire meglio i giorni
-  endTime   DateTime
-  range     Unsupported("tsrange") // Usa tsrange filtrando per range temporali in query applicative
+  endTime   DateTime  
+  range     Unsupported("tsrange")?   // Colonna generata da Postgres (GENERATED ALWAYS AS tsrange(startTime,endTime) STORED, vedi migration iniziale).
+  // Il DB la tratta come NOT NULL, ma qui DEVE restare "?": senza il "?", Prisma
+  // disabilita create/update/upsert sull'intero model (limite noto per campi Unsupported obbligatori).
+  // ATTENZIONE: ogni `migrate dev`/`migrate diff` proporrà "DROP NOT NULL"/"DROP DEFAULT" su questa colonna:
+  // è un artefatto fantasma dell'introspezione, NON applicarlo mai. Se compare da solo, Ctrl+C senza dare un nome.
+
   tenantId  String
+  userId    String
   roomId    Int
   room      Room     @relation(fields:[roomId], references:[id], onDelete: Cascade)
   tenant    Tenant  @relation(fields:[tenantId], references:[id], onDelete: Cascade)
+  user      User    @relation(fields: [userId], references: [id], onDelete: Restrict)
   status    String   @default("PENDING") // PENDING, APPROVED, REJECTED
   createdAt DateTime @default(now())
 }
