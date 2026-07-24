@@ -31,7 +31,7 @@ app.post("/api/webhooks", express.raw({type:'application/json'}), async (req,res
         //Controlla che la richiesta provenga davvero da Stripe
         event=stripe.webhooks.constructEvent(req.body, signature, webhookSecret);
     } catch (error: any) {
-        console.error('Errore validazione firma: ${error.message}');
+        console.error(`Errore validazione firma: ${error.message}`);
         return res.status(400).send(`Webhook Error: ${error.message}`);    
     }
 
@@ -336,12 +336,22 @@ app.post("/api/rooms", requireAuth, checkRole(['TENANTADMIN']), requireActiveSub
             // Invia un evento in tempo reale tramite Supabase per notificare la nuova prenotazione, isolato includendo il tenantId
             const realTimechannel=supabase.channel(`bookings:${tenantId}`);
 
-            //Invia il messaggio in broadcast a tutti i forntend in ascolto
-            realTimechannel.send({
-                type:'broadcast',
-                event:'new-booking',
-                payload:{booking:newBooking} //invia i dettaglli della prenotazione appena creata.
-            });
+            try{
+
+            //Invia il messaggio in broadcast a tutti i frontend in ascolto
+            await realTimechannel.httpSend('new-booking', { booking: newBooking }) //invia i dettagli della prenotazione appena creata.
+
+
+            }catch(error){
+            console.error("Notifica realTime non inviata correttamente:", error);            
+            }
+
+            try{
+            await supabase.removeChannel(realTimechannel);
+            }catch(error){
+                console.error("Errore durante la pulizia del channel realTime:", error);
+            }
+
 
 
 
