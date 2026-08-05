@@ -1,5 +1,7 @@
 import {useState} from "react";
 import {supabase} from "../lib/supabase";
+import CustomInput from "../components/CustomInput";
+
 function Registrazione(){
 
     const[contact, setContact]=useState({
@@ -66,11 +68,11 @@ function Registrazione(){
         <div>
             <h1>Form di registrazione</h1>
             <form onSubmit={handleSubmit}>
-                <input type="text" name="firstName" placeholder="Nome" value={contact.firstName} onChange={handleChange} />
-                <input type="text" name="lastName" placeholder="Cognome" value={contact.lastName} onChange={handleChange} />
-                <input type="email" name="email" placeholder="Email" value={contact.email} onChange={handleChange} />
-                <input type="password" name="password" placeholder="Password" value={contact.password} onChange={handleChange} />
-                <input type="text" name="slug" placeholder="Slug" value={contact.slug} onChange={handleChange} />
+                <CustomInput label="Nome" type="text" name="firstName" placeholder="Nome" value={contact.firstName} onChange={handleChange} />
+                <CustomInput label="Cognome" type="text" name="lastName" placeholder="Cognome" value={contact.lastName} onChange={handleChange} />
+                <CustomInput label="Email" type="email" name="email" placeholder="Email" value={contact.email} onChange={handleChange} />
+                <CustomInput label="Password" type="password" name="password" placeholder="Password" value={contact.password} onChange={handleChange} />
+                <CustomInput label="Codice Invito" type="text" name="slug" placeholder="Slug" value={contact.slug} onChange={handleChange} />
 
                 {errorMessage && <p style={{ color: "red" }}>{errorMessage}</p>}
                 {successMessage && <p style={{ color: "green" }}>{successMessage}</p>}

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import {supabase} from "../lib/supabase";
 import {useNavigate} from "react-router";
 import {useAuth} from "../context/AuthContext";
+import CustomInput from "../components/CustomInput";
 
 function Login(){
 
@@ -53,11 +54,11 @@ function Login(){
 
 
     return(
-        <div>
+        <div className="dark:bg-black dark:text-white">
             <h1>Login Form</h1>
             <form onSubmit={handleSubmit}>
-                <input onChange={handleChange} name="email" type="email" placeholder="Email" value={userData.email} />
-                <input onChange={handleChange} name="password" type="password" placeholder="Password" value={userData.password} />
+                <CustomInput label="Email" onChange={handleChange} name="email" type="email" placeholder="Email" value={userData.email} />
+                <CustomInput label="Password" onChange={handleChange} name="password" type="password" placeholder="Password" value={userData.password} />
 
                 {errorMessage && <p style={{ color: "red" }}>{errorMessage}</p>}
 

@@ -4,11 +4,14 @@ import Landing from './pages/Landing';
 import Login from './pages/Login';
 import Registrazione from './pages/Registrazione';
 import PrivateRoute from './context/PrivateRoute';
+import ThemeProvider from "./context/ThemeContext";
+import Header from "./components/Header";
 
-
-function App(){
+function App(){  
   return (  <AuthProvider>
+    <ThemeProvider>
     <BrowserRouter>
+    <Header />
     <Routes>
       <Route path='/' element={<Landing/>} />
       <Route path='/login' element={<Login/>} />
@@ -16,6 +19,7 @@ function App(){
       <Route path='/private' element={<PrivateRoute><div>Private Content</div></PrivateRoute>} />
       </Routes>
       </BrowserRouter>
+      </ThemeProvider>
   </AuthProvider>
 )
 }
