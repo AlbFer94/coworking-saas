@@ -12,12 +12,14 @@ function App(){
     <ThemeProvider>
     <BrowserRouter>
     <Header />
+    <main className="pt-16">
     <Routes>
       <Route path='/' element={<Landing/>} />
       <Route path='/login' element={<Login/>} />
       <Route path='/registrazione' element={<Registrazione/>} />
       <Route path='/private' element={<PrivateRoute><div>Private Content</div></PrivateRoute>} />
       </Routes>
+      </main>
       </BrowserRouter>
       </ThemeProvider>
   </AuthProvider>

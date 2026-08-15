@@ -54,15 +54,15 @@ function Login(){
 
 
     return(
-        <div className="dark:bg-black dark:text-white">
-            <h1>Login Form</h1>
-            <form onSubmit={handleSubmit}>
+        <div className="flex flex-col justify-center items-center min-h-screen">
+            <form onSubmit={handleSubmit} className="flex flex-col gap-4 bg-slate-50 border-2 border-slate-300 dark:border-slate-400 dark:bg-slate-800 rounded-lg px-8 py-4 w-full max-w-md">
+                <h1>Login Form</h1>
                 <CustomInput label="Email" onChange={handleChange} name="email" type="email" placeholder="Email" value={userData.email} />
                 <CustomInput label="Password" onChange={handleChange} name="password" type="password" placeholder="Password" value={userData.password} />
 
                 {errorMessage && <p style={{ color: "red" }}>{errorMessage}</p>}
 
-                <button type="submit">Login</button>
+                <button type="submit" className="bg-indigo-600 text-white rounded-md px-4 py-2 hover:bg-indigo-500 cursor-pointer">Login</button>            
             </form>
         </div>
     );

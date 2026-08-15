@@ -65,9 +65,11 @@ function Registrazione(){
 
 
     return(
-        <div>
-            <h1>Form di registrazione</h1>
-            <form onSubmit={handleSubmit}>
+        <div className="flex flex-col justify-center items-center min-h-screen py-8">
+            <form onSubmit={handleSubmit} className="flex flex-col gap-4 bg-slate-50 border-2 border-slate-300 dark:border-slate-400 dark:bg-slate-800 rounded-lg px-8 py-4 w-full max-w-md">
+
+                <h1>Form di registrazione</h1>
+
                 <CustomInput label="Nome" type="text" name="firstName" placeholder="Nome" value={contact.firstName} onChange={handleChange} />
                 <CustomInput label="Cognome" type="text" name="lastName" placeholder="Cognome" value={contact.lastName} onChange={handleChange} />
                 <CustomInput label="Email" type="email" name="email" placeholder="Email" value={contact.email} onChange={handleChange} />
@@ -77,7 +79,7 @@ function Registrazione(){
                 {errorMessage && <p style={{ color: "red" }}>{errorMessage}</p>}
                 {successMessage && <p style={{ color: "green" }}>{successMessage}</p>}
 
-                <button type="submit">Registrati</button>
+                <button type="submit" className="bg-indigo-600 text-white rounded-md px-4 py-2 hover:bg-indigo-500 cursor-pointer">Registrati</button>
             </form>
         </div>
     );
