@@ -37,7 +37,7 @@ function Registrazione(){
         });
     }
 
-    async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+    async function handleSubmit(event: React.SubmitEvent<HTMLFormElement>) {
         event.preventDefault();
         const { data, error } = await supabase.auth.signUp({
             email: contact.email,
