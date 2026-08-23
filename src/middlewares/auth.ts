@@ -35,6 +35,14 @@ export const requireAuth=async (req:Request,res:Response,next:NextFunction)=>{
         return res.status(401).json({error:'Token non valido o sessione scaduta'})
       }
 
+      const {data}= await supabase.auth.getClaims(jwt);
+
+      if(data?.claims.amr?.some((entry) =>
+        typeof entry !== 'string' && entry.method === 'otp' //NB: 'otp' è generico, copre anche magic link/inviti oggi equivale a recovery perché l'app non ha altri flussi OTP
+      )){
+        return res.status(401).json({error:'Operazione non consentita con una sessione di recupero password'})
+      }
+
       //Inserisce lo User autenticato nella richiesta (req) di Express
       req.user=user;
       return next();
