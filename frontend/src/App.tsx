@@ -6,6 +6,7 @@ import Registrazione from './pages/Registrazione';
 import PrivateRoute from './context/PrivateRoute';
 import ThemeProvider from "./context/ThemeContext";
 import Header from "./components/Header";
+import ResetPassword from "./pages/ResetPassword";
 
 function App(){  
   return (  <AuthProvider>
@@ -18,6 +19,7 @@ function App(){
       <Route path='/login' element={<Login/>} />
       <Route path='/registrazione' element={<Registrazione/>} />
       <Route path='/private' element={<PrivateRoute><div>Private Content</div></PrivateRoute>} />
+      <Route path="/reset-password" element={<ResetPassword />} />
       </Routes>
       </main>
       </BrowserRouter>

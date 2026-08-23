@@ -76,10 +76,37 @@ const AuthProvider=(props:AuthProviderProps)=>{
 
     useEffect(()=>{
         const {data:{subscription}}=supabase.auth.onAuthStateChange((_event,session)=>{
-        setUser(mapSupabaseUser(session?.user || null))
-        setIsLogged(!!session)
-        setIsSessionChecked(true)
-        })
+
+       setTimeout(async ()=>{
+        if(session){
+            const {data}=await supabase.auth.getClaims();
+            const hasPasswordRecovery =
+                data?.claims.amr?.some((entry) =>
+                    typeof entry === "string"
+                        ? entry === "otp" // NB: 'otp' è generico, copre anche magic link/inviti 
+                                         // oggi equivale a recovery perché l'app non ha altri flussi OTP
+                        : entry.method === "otp"
+                ) ?? false;
+
+
+            if(hasPasswordRecovery){
+                setIsLogged(false);
+                setUser(null);
+                setIsSessionChecked(true);
+                return;
+            }
+
+            setUser(mapSupabaseUser(session?.user || null))
+            setIsLogged(!!session)
+            setIsSessionChecked(true)
+        }else{
+            setUser(null);
+            setIsLogged(false);
+            setIsSessionChecked(true);
+        }
+       },0)     
+
+    });
 
         return ()=>{
             subscription.unsubscribe()

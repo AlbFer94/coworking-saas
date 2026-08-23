@@ -12,6 +12,8 @@ function Login(){
     });
 
     const [errorMessage, setErrorMessage]=useState<string | null>(null);
+    const [successMessage, setSuccessMessage]=useState<string |null>(null);
+
 
     const {isLogged}=useAuth();
     const navigate=useNavigate();
@@ -51,7 +53,27 @@ function Login(){
         });
     }
 
+    async function handleResetPassword(event: React.MouseEvent<HTMLButtonElement>) {
+        event.preventDefault();
 
+        if (!userData.email) {
+            setErrorMessage("Inserisci l'email per recuperare la password.");
+            return;
+        }
+
+        const { error } = await supabase.auth.resetPasswordForEmail(userData.email, {
+            redirectTo: `${window.location.origin}/reset-password`,
+        });
+
+        if (error) {
+            console.error("Errore durante il reset password:", error.message);
+            setErrorMessage(error.message);
+            return;
+        }
+
+        setErrorMessage(null);
+        setSuccessMessage("Controlla la tua email per il link di recupero.")
+    }
 
     return(
         <div className="flex flex-col justify-center items-center min-h-screen">
@@ -62,7 +84,11 @@ function Login(){
 
                 {errorMessage && <p style={{ color: "red" }}>{errorMessage}</p>}
 
-                <button type="submit" className="bg-indigo-600 text-white rounded-md px-4 py-2 hover:bg-indigo-500 cursor-pointer">Login</button>            
+                <button type="submit" className="bg-indigo-600 text-white rounded-md px-4 py-2 hover:bg-indigo-500 cursor-pointer">Login</button>
+                <button  onClick={handleResetPassword} name="resetPassword" type="button">Recupera Password</button>
+                
+                {successMessage && <p style={{ color: "green" }}>{successMessage}</p>}
+
             </form>
         </div>
     );
