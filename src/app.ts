@@ -2,11 +2,12 @@ import 'dotenv/config';
 import express from 'express';
 import type { Request, Response} from 'express';
 import {prisma} from "./prisma.js"; //importa il singleton creato in prisma.ts
-import {supabase} from "./supabase.js";
+import {supabase,supabaseAdmin} from "./supabase.js";
 import { requireAuth, checkRole } from './middlewares/auth.js';
 import { stripe, webhookSecret } from './stripe.js';
 import { requireActiveSubscription } from './middlewares/billing.js';
 import { isExclusionViolationError } from './lib/errors.js'; // Importa la funzione di type guard
+import { sendConfirmationEmail } from './lib/mailer.js';
 
 
 
@@ -116,19 +117,79 @@ app.get("/api/tenants", async (_req, res) =>{ //uso req come _req per indicare c
 // Registrazione utente/amministratore con Auth Supabase e Prisma per il db
 app.post("/api/auth/signup", async (req,res) =>{
 
-    const {firstName, lastName, email, password,tenantId,role}=req.body;
+    const {firstName, lastName, email, password,slug}=req.body;
 
-    if(!firstName|| !lastName|| !email|| !password|| !tenantId){
+    if(!firstName|| !lastName|| !email|| !password||!slug){
         return res.status(400).json({error:"Campi obligatori mancanti."});
     }
 
     try{
-        const {data:authData, error:authError}= await supabase.auth.signUp({
+        //Risoluzione slug -> tenant.
+        const tenant=await prisma.tenant.findUnique({
+            where:{
+                slug:slug,
+            },
+        });
+
+        if(!tenant){
+            return res.status(400).json({error:"Codice invito non valido", code:"INVALID_TENANT_SLUG"})
+        }
+
+        const tenantId=tenant.id;
+
+        // Fonte di verità per l'esistenza dell'email: Prisma, non Supabase.
+        // Il record User viene creato in Prisma allo stesso momento in cui
+        // viene creato su Supabase Auth (vedi ramo "else" sotto), quindi
+        // una query qui basta a sapere se l'email è già nota al sistema,
+        // senza dover interrogare Supabase (che non offre un getUserByEmail).
+        const isRegistered= await prisma.user.findUnique({
+            where:{
+                email:email,
+            },
+        });
+
+        if(isRegistered){
+          // RAMO 2/3 — email già presente in Prisma.
+          // admin.createUser() darebbe lo stesso errore generico "email
+          // già esistente" sia per un utente confermato che per uno non
+          // confermato: qui invece li distinguo esplicitamente
+          // leggendo email_confirmed_at da Supabase Auth, perché il
+          // comportamento corretto per il frontend è diverso nei due casi
+          // (blocco secco vs. suggerire il recupero password).
+          const userId=isRegistered.id;
+          const {data,error}=await supabaseAdmin.auth.admin.getUserById(userId);
+
+          if(error){
+            return res.status(500).json({error:error.message});
+          }
+
+          if(!data.user.email_confirmed_at){
+            // RAMO 3 — email registrata ma mai confermata. Con controllo su truthiness: copre sia null che undefined.
+            // Non si aggiorna né si ricrea nulla (evita l'asimmetria
+            // password/metadata scoperta in test precedenti): si blocca
+            // e si segnala il code, così il frontend può guidare l'utente
+            // al recupero password invece di un errore generico.
+            return res.status(409).json({error:"Utente già registrato recuperare la password", code:"EMAIL_UNCONFIRMED"});
+          }
+          
+          else{
+            // RAMO 2 — email registrata e confermata: nessuna azione,
+            // l'utente deve semplicemente fare login.
+           return res.status(409).json({error:"Utente già esistente effettuare Login", code:"EMAIL_ALREADY_REGISTERED"});
+          } 
+        }
+        
+        else{
+        // RAMO 1 — email non presente in Prisma: registrazione nuova.
+        // admin.createUser() (Admin API, service role) al posto di
+        // signUp() lato client: a differenza di signUp(), non applica
+        // l'anti-enumeration (qui non serve, è una chiamata server-side
+        // privilegiata) e soprattutto NON invia l'email di conferma da
+        // sola — va gestita esplicitamente altrove nel flusso.
+        const {data:authData, error:authError}= await supabaseAdmin.auth.admin.createUser({
             email,
             password,
-            options:{
-                data:{firstName,lastName,tenantId,role:role||"MEMBER"}
-            }
+            user_metadata:{firstName,lastName,tenantId,role:"MEMBER"}
         });
 
         //Supabase non lancia errori intercettabili da catch ma vanno intercettati esplicitamente
@@ -148,11 +209,37 @@ app.post("/api/auth/signup", async (req,res) =>{
                 lastName,
                 email,
                 tenantId,
-                role: role || "MEMBER"
+                role: "MEMBER"
             }
         });
 
-        return res.status(201).json({message:"Utente registrato con successo", user:newUser});
+        const {data, error}= await supabaseAdmin.auth.admin.generateLink({
+            type:'signup',
+            email:email,
+            password:password
+        });
+
+        if(error){
+            return res.status(201).json({
+                message:"Utente registrato, ma non è possibile generare il link di conferma",
+                user:newUser,
+                code:"LINK_GENERATION_FAILED"
+            });
+        }
+
+        const emailResult=await sendConfirmationEmail(email, data.properties.action_link);
+
+            return res.status(201).json({
+                message: emailResult.emailSent
+                ? "Utente registrato ed email di conferma inviata."
+                : "Utente registrato, ma non è stato possibile inviare l'email di conferma.",
+                user:newUser,
+                emailSent:emailResult.emailSent,
+                ...(emailResult.error && {code:"EMAIL_SEND_FAILED"})
+            });
+
+        }
+
 
     }catch(error){
         console.error("Errore durante il signup:", error);
@@ -160,7 +247,6 @@ app.post("/api/auth/signup", async (req,res) =>{
     }
 
 });
-
 
 
 
