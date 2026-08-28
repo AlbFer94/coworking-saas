@@ -8,6 +8,7 @@ import { stripe, webhookSecret } from './stripe.js';
 import { requireActiveSubscription } from './middlewares/billing.js';
 import { isExclusionViolationError } from './lib/errors.js'; // Importa la funzione di type guard
 import { sendConfirmationEmail } from './lib/mailer.js';
+import { error } from 'node:console';
 
 
 
@@ -318,7 +319,8 @@ app.post("/api/rooms", requireAuth, checkRole(['TENANTADMIN']), requireActiveSub
         }
     } );
 
-    //Rotta di prenotazione stanza(Room) con controllo di sovrapposizione prenotazioni e decremento dei crediti dell'utente in una transazione atomica
+    //Rotta di prenotazione stanza(Room) con controllo di sovrapposizione prenotazioni e decremento dei crediti dell'utente in una transazione atomica.
+    //Controllo Appartenenza: La Room richiesta deve appartenere al tenant del chiamante.
     app.post("/api/bookings", requireAuth, requireActiveSubscription, async (req:Request, res:Response)=>{
 
         const {roomId, startTime, endTime, name, email, phone}=req.body;
@@ -332,6 +334,40 @@ app.post("/api/rooms", requireAuth, checkRole(['TENANTADMIN']), requireActiveSub
             //Crea oggetto Date
             const start= new Date(startTime);
             const end= new Date(endTime);
+
+            //Recupera l'id dello user che effettua la prenotazione
+            const userId=req.user?.id;
+
+            //Recupero del tenantId dai metadati di Supabase
+            const tenantId= req.user?.user_metadata['tenantId'] as string | undefined;
+
+            //Il token è già stato validato dal middleware quindi un claim mancante è un token malformato di un utente già autenticato.
+            if(!tenantId){
+                return res.status(403).json({error:"Identificativo azienda non trovato."});
+            }
+
+            if(!userId){
+                return res.status(403).json({error:"Identificativo utente non trovato."});
+            }
+
+            // Controllo di appartenenza. roomId arriva dal body ed è quindi
+            // arbitrario: senza questa verifica un utente potrebbe prenotare una
+            // stanza di un'altra azienda, marcando il record col proprio tenantId
+            // e occupando la stanza altrui. Sul percorso Express + Prisma le policy
+            // RLS non si applicano (connessione con ruolo BYPASSRLS e senza JWT),
+            // quindi questo controllo è l'unico isolamento esistente.
+            const room= await prisma.room.findUnique({
+                where:{id: Number(roomId)},
+                select:{tenantId:true},
+            });
+
+            // Stanza inesistente e stanza di un altro tenant danno la stessa
+            // risposta: distinguerle rivelerebbe quali roomId esistono nel sistema.
+            // Il confronto copre entrambi i casi perché su stanza assente
+            // room?.tenantId è undefined, mentre tenantId è garantito dalla guardia sopra.
+            if(tenantId !== room?.tenantId){
+                return res.status(404).json({error:"La stanza selezionata non esiste"});
+            }
 
             if(start>=end){
                 return res.status(400).json({error:"L'orario di inizio deve essere precedente a quello di fine."});
@@ -361,19 +397,6 @@ app.post("/api/rooms", requireAuth, checkRole(['TENANTADMIN']), requireActiveSub
                 return res.status(400).json({error:"Impossibile prenotare. La stanza è già occupata in questo intervallo di tempo."});
             }
 
-            //Recupera l'id dello user che effettua la prenotazione
-            const userId=req.user?.id;
-
-            //Recupero del tenantId dai metadati di Supabase
-            const tenantId= req.user?.user_metadata['tenantId'] as string | undefined;
-
-            if(!tenantId){
-                return res.status(401).json({error:"Identificativo azienda non trovato."});
-            }
-
-            if(!userId){
-                return res.status(401).json({error:"Identificativo utente non trovato."});
-            }
 
             const userIsActive= await prisma.user.findUnique({
                 where:{id:userId},
