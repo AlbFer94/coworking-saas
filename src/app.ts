@@ -8,7 +8,7 @@ import { stripe, webhookSecret } from './stripe.js';
 import { requireActiveSubscription } from './middlewares/billing.js';
 import { isExclusionViolationError } from './lib/errors.js'; // Importa la funzione di type guard
 import { sendConfirmationEmail } from './lib/mailer.js';
-import { error } from 'node:console';
+import { Prisma } from '../generated/prisma/index.js';
 
 
 
@@ -73,7 +73,6 @@ app.post("/api/webhooks", express.raw({type:'application/json'}), async (req,res
 app.use(express.json());
 
 // registrazione nuova azienda di co-working
-
 app.post("/api/tenants", async (req, res) => {
     const { name, slug } = req.body;
 
@@ -90,28 +89,24 @@ app.post("/api/tenants", async (req, res) => {
         });
 
         return res.status(201).json(newTenant);
-    } catch (error) {
-        console.error("errore dettaglio del server:", error);
+    }catch (error) {
+        if (error instanceof Prisma.PrismaClientKnownRequestError) {
+            // P2002: violazione di vincolo @unique. Su Tenant l'unico campo
+            // @unique è slug, quindi il messaggio è accurato senza doverlo
+            // ricavare dall'errore. Il campo violato sarebbe leggibile solo
+            // da meta.driverAdapterError.cause.constraint.fields, struttura
+            // interna dell'adapter pg, non documentata e non tipizzata.
+            // Se in futuro Tenant avrà altri @unique, questo ramo va rivisto.
+            if (error.code === "P2002") {
+                return res.status(409).json({
+                    error: "Questo codice azienda è già in uso.",
+                    code: "SLUG_ALREADY_EXISTS"
+                });
+            }
+        }
+
+        console.error("Errore durante la creazione del tenant:", error);
         return res.status(500).json({ error: "Errore durante la registrazione" });
-    }
-});
-
-// lista di tutti i tenants (aziende) registrati
-
-app.get("/api/tenants", async (_req, res) =>{ //uso req come _req per indicare che non viene utilizzato
-    try{
-        const tenantsList=await prisma.tenant.findMany({
-            orderBy:[
-                {name:"asc"},
-                {slug:"asc"},
-                {createdAt:"asc"}
-            ]
-        });
-        return res.json(tenantsList);
-    }catch(error){
-        console.error(error)
-        return res.status(500).json({ error: "Errore durante il recupero dei dati." });
-
     }
 });
 
