@@ -1,5 +1,4 @@
 import {useEffect, useState} from "react";
-import {supabase} from "../lib/supabase";
 import CustomInput from "../components/CustomInput";
 import { useAuth } from "../context/AuthContext";
 import { useNavigate } from "react-router";
@@ -16,6 +15,7 @@ function Registrazione(){
 
     const [errorMessage, setErrorMessage]=useState<string | null>(null);
     const [successMessage, setSuccessMessage]=useState<string |null>(null);
+    const [isSubmitting, setIsSubmitting]=useState(false);
     const navigate = useNavigate();
     const {isLogged}=useAuth();
 
@@ -39,37 +39,50 @@ function Registrazione(){
 
     async function handleSubmit(event: React.SubmitEvent<HTMLFormElement>) {
         event.preventDefault();
-        const { data, error } = await supabase.auth.signUp({
-            email: contact.email,
-            password: contact.password,
-            options: {
-                data: {
-                    name: `${contact.firstName} ${contact.lastName}`.trim(),
-                    slug: contact.slug,
-                    role: "MEMBER" // di default MEMEBER 
-                },
-            },
-        });
+        setIsSubmitting(true);
 
-        if (error?.code === 'email_exists') {
-            console.error("L'email fornita è già esistente");
-            setErrorMessage("L'email fornita è già stata registrata. Prova a effettuare il login o utilizza un'altra email.");
-            setSuccessMessage(null);
-            
-        } else if (error) {
-            console.error("Errore durante la registrazione:", error.message);
-            setErrorMessage(error.message);
-            setSuccessMessage(null);
+        try{
+            const response = await fetch(`${import.meta.env.VITE_API_URL}/api/auth/signup`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    firstName:contact.firstName,
+                    lastName:contact.lastName,
+                    email:contact.email,
+                    password:contact.password,
+                    slug:contact.slug 
+                }),
+            });
 
-        } else if (data.user?.identities?.length === 0){
-            // Supabase non restituisce un errore per email già registrate e confermate
-            // (previene la user enumeration): restituisce invece un utente "fake" con
-            // identities vuoto. Questo è l'unico modo per distinguerlo da una vera signup.
-            setErrorMessage("Email già registrata. Effettua il login o utilizza un'altra email.");
-            setSuccessMessage(null);
-        }else {
+            const data = await response.json();
+
+            if (!response.ok) {
+                if (data?.code === 'EMAIL_UNCONFIRMED') {
+                    setErrorMessage("L'email fornita è già stata registrata ma non confermata. Recupera la password per accedere.");
+                } else if(data?.code === 'EMAIL_ALREADY_REGISTERED') {
+                    setErrorMessage("Email già registrata. Effettua il login.");
+                } else if(data?.code === 'INVALID_TENANT_SLUG'){
+                    setErrorMessage("Identificativo azienda non valido");
+                }else{
+                    setErrorMessage(data.error || "Errore durante la registrazione.");
+                }
+                setSuccessMessage(null);
+                return;
+
+            }
+
             setErrorMessage(null);
-            setSuccessMessage("Registrazione avvenuta con successo! Controlla la tua posta per confermare l'email e completare la registrazione.");
+            setSuccessMessage(
+                data.emailSent
+                ? "Registrazione avvenuta con successo! Controlla la tua posta per confermare la tua email."
+                : "Registrazione avvenuta con successo, ma non è stato possibile inviare l'email di conferma."
+            );
+        } catch (err) {
+            console.error("Errore di rete durante la registrazione:", err);
+            setErrorMessage("Errore di connessione al server.");
+            setSuccessMessage(null);
+        } finally {
+            setIsSubmitting(false);
         }
     }
 
@@ -91,7 +104,7 @@ function Registrazione(){
 
                     {errorMessage && <p className="text-red-600">{errorMessage}</p>}
 
-                    <button type="submit" className="bg-indigo-600 text-white rounded-md px-4 py-2 hover:bg-indigo-500 cursor-pointer">Registrati</button>
+                    <button type="submit" disabled={isSubmitting} className="bg-indigo-600 text-white rounded-md px-4 py-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed hover:not-disabled:bg-indigo-500">{isSubmitting ? "Registrazione in corso..." : "Registrati"}</button>
                 </form>
             )}
 
