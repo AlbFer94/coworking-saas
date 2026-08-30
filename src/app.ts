@@ -9,6 +9,7 @@ import { requireActiveSubscription } from './middlewares/billing.js';
 import { isExclusionViolationError } from './lib/errors.js'; // Importa la funzione di type guard
 import { sendConfirmationEmail } from './lib/mailer.js';
 import { Prisma } from '../generated/prisma/index.js';
+import cors from 'cors';
 
 
 
@@ -69,6 +70,14 @@ app.post("/api/webhooks", express.raw({type:'application/json'}), async (req,res
     }
 });
 
+//middleware CORS
+const corsOrigin=process.env.CORS_ORIGIN;
+
+if(!corsOrigin){
+    throw new Error("CORS_ORIGIN non definita. Impostala nel file .env.");
+}
+
+app.use(cors({origin:corsOrigin}));
 
 app.use(express.json());
 
