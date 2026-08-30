@@ -371,6 +371,7 @@ app.post("/api/rooms", requireAuth, checkRole(['TENANTADMIN']), requireActiveSub
 
             //Controllo di sovrapposizione prenotazioni (anti-overlapping) solo per Fail Fast, il vero blocco è su constraint di esclusione in Postgres
             const overlappingBooking= await prisma.booking.findFirst({
+                //Il controllo viene fatto solo su roomId in quanto l'appartenenza della room al tenant viene eseguita prima nella rotta.
                 where:{
                     roomId:Number(roomId), //controlla la stessa stanza
                     AND:[
