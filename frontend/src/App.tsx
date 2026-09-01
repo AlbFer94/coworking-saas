@@ -13,7 +13,7 @@ function App(){
     <ThemeProvider>
     <BrowserRouter>
     <Header />
-    <main className="pt-16">
+    <main>
     <Routes>
       <Route path='/' element={<Landing/>} />
       <Route path='/login' element={<Login/>} />

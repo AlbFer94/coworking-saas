@@ -9,7 +9,7 @@ const {isLogged, logout}=useAuth();
 
 
 return(
-    <header className="fixed top-0 left-0 right-0 bg-slate-300 dark:bg-slate-700 border-b-2 border-slate-400 flex justify-between items-center gap-4 px-8 py-4">
+    <header className="sticky top-0 z-10 bg-slate-300 dark:bg-slate-700 border-b-2 border-slate-400 flex justify-between items-center gap-4 px-8 py-4">
         <Link to="/" className="font-bold">COWORKING-SAAS</Link>
         <div className="flex gap-4">
         <button className="cursor-pointer" onClick={toggleTheme}>{isDark ? "🌙" : "☀️"}</button>
