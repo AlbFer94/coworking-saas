@@ -2,7 +2,7 @@ import type { Request, Response, NextFunction } from 'express';
 import { prisma } from '../prisma.js';
 
 export const requireActiveSubscription = async (req: Request, res: Response, next: NextFunction) => {
-    const tenantId = req.user?.user_metadata['tenantId'] as string | undefined;
+    const tenantId = req.user?.tenantId;
 
     if (!tenantId) {
         return res.status(401).json({ error: 'Accesso negato. Identificativo azienda non trovato.' });

@@ -265,8 +265,8 @@ app.post("/api/rooms", requireAuth, checkRole(['TENANTADMIN']), requireActiveSub
     }
 
     try{
-    //Recupero del tenantId dai metadata di supabase iniettati nel middleware
-    const tenantId= req.user?.user_metadata['tenantId'] as string | undefined;
+    //Recupero del tenantId che requireAuth popola dal DB.
+    const tenantId= req.user?.tenantId;
 
     if(!tenantId){
         return res.status(403).json({error:"Identificativo azienda (Tenant) non trovato."});
@@ -293,8 +293,8 @@ app.post("/api/rooms", requireAuth, checkRole(['TENANTADMIN']), requireActiveSub
     app.post("/api/billing/checkout", requireAuth, checkRole(['TENANTADMIN']), async (req:Request,res:Response)=>{
 
         try{
-            //recupero del tenantId dai metadata di supabase
-            const tenantId= req.user?.user_metadata['tenantId'] as string | undefined;
+            //recupero del tenantId da requireAuth che popola il claim dal DB
+            const tenantId= req.user?.tenantId;
 
             if(!tenantId){
                 return res.status(403).json({error:"Identificativo azienda (Tenant) non consentito al pagamento"})
@@ -342,10 +342,10 @@ app.post("/api/rooms", requireAuth, checkRole(['TENANTADMIN']), requireActiveSub
             //Recupera l'id dello user che effettua la prenotazione
             const userId=req.user?.id;
 
-            //Recupero del tenantId dai metadati di Supabase
-            const tenantId= req.user?.user_metadata['tenantId'] as string | undefined;
+            //Recupero del tenantId da requireAuth che popola l'identità dal DB
+            const tenantId= req.user?.tenantId;
 
-            //Il token è già stato validato dal middleware quindi un claim mancante è un token malformato di un utente già autenticato.
+            //La GUARD requireAuth garantisce che req.user sia definito, inserisco controllo se Typescript non sa che requireAuth è passato o se la rotta venisse montata senza middleware.
             if(!tenantId){
                 return res.status(403).json({error:"Identificativo azienda non trovato."});
             }
@@ -402,15 +402,6 @@ app.post("/api/rooms", requireAuth, checkRole(['TENANTADMIN']), requireActiveSub
                 return res.status(400).json({error:"Impossibile prenotare. La stanza è già occupata in questo intervallo di tempo."});
             }
 
-
-            const userIsActive= await prisma.user.findUnique({
-                where:{id:userId},
-                select: { deletedAt: true }
-            });
-
-            if(!userIsActive || userIsActive.deletedAt !== null){
-                throw new Error('USER_ELIMINATO');
-            }
 
             //Controllo dei crediti dell'utente e creazione della prenotazione in una transazione atomica
             const newBooking=await prisma.$transaction(async (tx) => {
@@ -476,9 +467,7 @@ app.post("/api/rooms", requireAuth, checkRole(['TENANTADMIN']), requireActiveSub
                 return res.status(409).json({error:"Impossibile prenotare. La stanza è già occupata in questo intervallo di tempo."});
             } else if (error instanceof Error && error.message === 'CREDITO_INSUFFICENTE') {
                 return res.status(400).json({error:"Credito insufficente per effettuare la prenotazione."});
-            } else if(error instanceof Error && error.message === 'USER_ELIMINATO'){
-                return res.status(403).json({error:"Impossibile prenotare in quanto l'account risulta essere eliminato"});
-            }else {
+            } else {
                 return res.status(500).json({error:'Errore interno durante la creazione della prenotazione.'});
             }
         }

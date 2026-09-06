@@ -1,12 +1,18 @@
 import type { Request, Response, NextFunction } from 'express';
 import { supabase } from '../supabase.js';
-import type { User } from '@supabase/supabase-js';
+import {prisma} from '../prisma.js'
 
-// Estendiamo il tipo Request di Express per includere l'utente di Supabase
+interface AuthenticatedUser{
+  id:string;
+  role:string;
+  tenantId:string;
+}
+
+// Estendiamo il tipo Request di Express per includere l'utente autenticato.
 declare global {
   namespace Express {
     interface Request {
-      user?: User;
+      user?: AuthenticatedUser;
     }
   }
 }
@@ -44,7 +50,24 @@ export const requireAuth=async (req:Request,res:Response,next:NextFunction)=>{
       }
 
       //Inserisce lo User autenticato nella richiesta (req) di Express
-      req.user=user;
+      const dbUser=await prisma.user.findUnique({
+        where:{id:user.id},
+        select:{role:true, tenantId:true, deletedAt:true}
+      });
+
+      if(!dbUser){
+        return res.status(401).json({error:'Utente non trovato'});
+      }
+
+      if(dbUser.deletedAt !== null){
+        return res.status(403).json({error:'Utente eliminato'});
+      }
+
+      req.user={
+        id:user.id,
+        role:dbUser.role,
+        tenantId:dbUser.tenantId
+      };
       return next();
      }catch (err){
       console.error("Errore middleware auth:", err);
@@ -61,8 +84,8 @@ export const checkRole=(allowedRoles:string[]) =>{
       return res.status(401).json({error:'Utente non autenticato'});
     }
 
-    //Estrae il role salvato in user_metadata
-    const userRole=req.user.user_metadata['role'] as string| undefined;
+    //Estrae il ruolo salvato sull'utente
+    const userRole=req.user.role;
 
     if(!userRole || !allowedRoles.includes(userRole)){
       return res.status(403).json({error:"Accesso negato."});
