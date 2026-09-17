@@ -1,6 +1,6 @@
 import {app} from '../src/app.js';
 import supertest from 'supertest';
-import { testToken } from './setup.js';
+import { memberA } from './setup.js';
 import { supabase } from '../src/supabase.js';
 import {describe, it, expect, beforeAll, afterAll} from 'vitest';
 
@@ -12,7 +12,18 @@ const payload={
 };
 
 describe('Test con ruolo forgiato', ()=>{
+
+
     beforeAll(async ()=>{
+        const {data: signInData, error: signInError}=await supabase.auth.signInWithPassword({
+            email: process.env.TEST_USER_EMAIL!,
+            password: process.env.TEST_USER_PASSWORD!,
+        });
+
+        if(signInError || !signInData.session) {
+            throw new Error('Login memberA fallito nel setup del test di sicurezza', {cause: signInError});
+        }
+
         const {data, error}=await supabase.auth.updateUser({
             data:{role:'MEMBER'}
         });
@@ -41,7 +52,7 @@ describe('Test con ruolo forgiato', ()=>{
             throw new Error('Il ruolo non è stato aggiornato correttamente', {cause:error});
         }
 
-        const res=await supertest(app).post('/api/rooms').set('Authorization', `Bearer ${testToken}`).send(payload);
+        const res=await supertest(app).post('/api/rooms').set('Authorization', `Bearer ${memberA.token}`).send(payload);
 
         expect(res.status).toBe(403);
         expect(res.body.error).toBe("Accesso negato.");

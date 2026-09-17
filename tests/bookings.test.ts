@@ -1,7 +1,7 @@
 import request from 'supertest';
 import {app} from '../src/app.js';
 import {test, expect, beforeEach, describe, afterEach} from 'vitest';
-import {testToken, testUserId} from './setup';
+import {memberA} from './setup';
 import {prisma} from '../src/prisma.js';
 import { isExclusionViolationError } from '../src/lib/errors.js';
 
@@ -33,20 +33,20 @@ const payload2={
 describe('Test prenotazioni concorrenti', () =>{
     beforeEach(async () => {
          await prisma.user.update({
-            where: {id:testUserId},
+            where: {id:memberA.userId},
             data: {credits:1}
         });
     });
 
     afterEach(async () =>{
-        const cleanup= await prisma.booking.deleteMany({
-            where:{userId:testUserId}
+        await prisma.booking.deleteMany({
+            where:{userId:memberA.userId}
         });
     });
 
     test('deve ritornare 201 e 400 quando si inviano due richieste concorrenti', async () => {
-    const res1 = request(app).post('/api/bookings').set('Authorization', `Bearer ${testToken}`).send(payload1);
-    const res2 = request(app).post('/api/bookings').set('Authorization', `Bearer ${testToken}`).send(payload2);
+    const res1 = request(app).post('/api/bookings').set('Authorization', `Bearer ${memberA.token}`).send(payload1);
+    const res2 = request(app).post('/api/bookings').set('Authorization', `Bearer ${memberA.token}`).send(payload2);
 
     const results = await Promise.allSettled([res1, res2]);
 
@@ -63,7 +63,7 @@ describe('Test prenotazioni concorrenti', () =>{
     expect(statuses.sort((a, b) => a - b)).toEqual([201, 400]);
 
     const creditCheck= await prisma.user.findUnique({
-        where: {id:testUserId},
+        where: {id:memberA.userId},
         select: {credits:true}
     });
 
@@ -73,7 +73,7 @@ describe('Test prenotazioni concorrenti', () =>{
     });
 
     test('Happy path: prenotazione valida, credito scalato correttamente', async () =>{
-    const response = await request(app).post('/api/bookings').set('Authorization', `Bearer ${testToken}`).send(payload1);
+    const response = await request(app).post('/api/bookings').set('Authorization', `Bearer ${memberA.token}`).send(payload1);
 
     expect(response.body.booking).toEqual(expect.objectContaining({
     startTime: startTime1.toISOString(),
@@ -88,7 +88,7 @@ describe('Test prenotazioni concorrenti', () =>{
     expect(response.status).toBe(201);
     
     const creditCheck= await prisma.user.findUnique({
-        where:{id:testUserId},
+        where:{id:memberA.userId},
         select:{credits:true}
     });
 
@@ -98,11 +98,11 @@ describe('Test prenotazioni concorrenti', () =>{
 
     test('Credito insufficente: un Member con credit 0 tenta di prenotare', async () =>{
         await prisma.user.update({
-            where: {id:testUserId},
+            where: {id:memberA.userId},
             data: {credits:0}
         });
 
-        const response = await request(app).post('/api/bookings').set('Authorization', `Bearer ${testToken}`).send(payload1);
+        const response = await request(app).post('/api/bookings').set('Authorization', `Bearer ${memberA.token}`).send(payload1);
 
         expect(response.status).toBe(400);
         expect(response.body.error).toBe("Credito insufficente per effettuare la prenotazione.");
@@ -111,15 +111,15 @@ describe('Test prenotazioni concorrenti', () =>{
     test('Double-booking: Testa il meccanismo di fail-fast.', async () =>{
 
         await prisma.user.update({
-            where:{id:testUserId},
+            where:{id:memberA.userId},
             data:{credits:2}
         });
         
-        const res1 = await request(app).post('/api/bookings').set('Authorization', `Bearer ${testToken}`).send(payload1);
+        const res1 = await request(app).post('/api/bookings').set('Authorization', `Bearer ${memberA.token}`).send(payload1);
 
         expect(res1.status).toBe(201);
 
-        const res2=await request(app).post('/api/bookings').set('Authorization', `Bearer ${testToken}`).send(payload1);
+        const res2=await request(app).post('/api/bookings').set('Authorization', `Bearer ${memberA.token}`).send(payload1);
 
         expect(res2.status).toBe(400);
         expect(res2.body.error).toBe("Impossibile prenotare. La stanza è già occupata in questo intervallo di tempo.")
@@ -136,7 +136,7 @@ describe('Test prenotazioni concorrenti', () =>{
                 email: "test@example.com",
                 phone: "1234567890",
                 tenantId:'fc9ee7a0-f78d-43b8-bfd7-2e1deb6b6c7c',
-                userId:testUserId
+                userId:memberA.userId
             }
         });
 
@@ -149,7 +149,7 @@ describe('Test prenotazioni concorrenti', () =>{
                 email: "test@example.com",
                 phone: "1234567890",
                 tenantId:'fc9ee7a0-f78d-43b8-bfd7-2e1deb6b6c7c',
-                userId:testUserId
+                userId:memberA.userId
             }
         });
 
