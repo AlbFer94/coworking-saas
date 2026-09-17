@@ -253,6 +253,43 @@ app.post("/api/auth/signup", async (req,res) =>{
 
 });
 
+// Rotta di lettura dei dati dell'utente autenticato tramite requireAuth.
+app.get("/api/me", requireAuth, async (req:Request, res:Response) =>{
+
+    try{
+        const userId= req.user?.id;
+
+        if(!userId){
+            return res.status(403).json({error:"Utente non trovato."});
+        }
+
+        const userData= await prisma.user.findUnique({
+            where:{id:userId},
+            select:{
+                id:true,
+                firstName:true,
+                lastName:true,
+                email:true,
+                role:true,
+                credits:true,
+                tenant:{ // Scendo nella relazione Tenant per recuperare anche lo status dell'abbonamento. Il frontend decide che dati mostrare. Member: identità canonica + crediti Admin: identità canonica + status abbonamento.
+                    select:{status:true},
+                },
+            },
+        });
+
+        if(userData === null){
+            return res.status(404).json({error:"Nessun utente trovato."});
+        }
+        
+        return res.status(200).json({user: userData});
+        
+    }catch(error){
+        console.error("Errore recupero utente", error);
+        return res.status(500).json({error:"Errore interno durante il recupero dati dell'utente."})
+    }
+});
+
 
 
 // Rotta di creazione stanze, protetta con middleware requireAuth e accessibile solo ai TENANTADMIN
@@ -287,6 +324,48 @@ app.post("/api/rooms", requireAuth, checkRole(['TENANTADMIN']), requireActiveSub
         console.error('Errore creazione stanza', error);
         return res.status(500).json({error:'Errore interno durante la creazione stanza.'});
     }
+    });
+
+    //Rotta di lettura stanze del proprio tenant, mostra le fascie orarie occupate da fornire al frontend per il booking.
+    app.get("/api/rooms", requireAuth, requireActiveSubscription, async (req:Request, res:Response)=>{
+
+        const now=new Date();
+
+        try{
+            const tenantId= req.user?.tenantId;
+
+            if(!tenantId){
+                return res.status(403).json({error:"Identificativo azienda (tenant) non trovato."});
+            }
+
+            //Recupera le stanze del tenant filtrando le prenotazioni attive su ogni stanza, se la stanza è libera l'array bookings ritorna vuoto, bookings [].
+            const rooms= await prisma.room.findMany({
+                where:{tenantId:tenantId},
+                orderBy:{name:'asc'},
+                select:{
+                    id:true,
+                    name:true,
+                    price:true,
+                    duration:true,
+                    bookings:{  //Scendo nella relazione booking per recuperare le prenotazioni attive.
+                        where:{
+                            status:{in:['PENDING', 'APPROVED']},
+                            endTime:{gte:now},
+                        },
+                        select:{
+                            startTime:true,
+                            endTime:true,
+                        },
+                    },
+                },
+            });
+
+            return res.status(200).json({rooms: rooms});
+
+        }catch(error){
+            console.error('Errore recupero stanze.', error);
+            return res.status(500).json({error:'Errore interno durante il recupero delle stanze dal database.'});
+        }
     });
 
     //Rotta di Chechout gestita con Stripe, protetta con middleware requireAuth e accessibile solo ai TENANTADMIN
@@ -470,6 +549,51 @@ app.post("/api/rooms", requireAuth, checkRole(['TENANTADMIN']), requireActiveSub
             } else {
                 return res.status(500).json({error:'Errore interno durante la creazione della prenotazione.'});
             }
+        }
+    });
+
+    //Rotta di lettura delle prenotazione per storico e gestione. 
+    //Rotetta con requireAuth e requireActiveSubscription. 
+    //Gli utenti vedono solo le proprie prenotazioni, gli admin vedono tutte le prenotazioni del tenant.
+    app.get("/api/bookings", requireAuth, requireActiveSubscription, async (req:Request, res:Response)=>{
+
+        try{
+            const tenantId=req.user?.tenantId;
+            const userId=req.user?.id;
+
+            if(!tenantId){
+                return res.status(403).json({error:"Identificativo azienda (Tenant) non trovato."});
+            }
+
+            if(!userId){
+                return res.status(403).json({error:"Identificativo utente non trovato."});
+            }
+
+            //Branch di ramificazione per ruolo: gli admin vedono tutte le prenotazioni del proprio tenant, i member vedono solo le proprie.
+            const whereClause=req.user?.role=== 'TENANTADMIN'
+            ? {tenantId}
+            : {tenantId, userId};
+
+            const bookings= await prisma.booking.findMany({
+                where:whereClause,
+                orderBy:{startTime:'desc'},
+                select:{
+                    id:true,
+                    name:true,
+                    email:true,
+                    phone:true,
+                    startTime:true,
+                    endTime:true,
+                    status:true,
+                    createdAt:true,
+                    room:{select:{name:true}}
+                },
+            });
+
+            return res.status(200).json({bookings});
+        }catch(error){
+            console.error("Errore del recupero bookings",error);
+            return res.status(500).json({error:"Errore durante il recupero dati delle prenotazioni."})
         }
     });
 
