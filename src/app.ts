@@ -8,8 +8,9 @@ import { stripe, webhookSecret } from './stripe.js';
 import { requireActiveSubscription } from './middlewares/billing.js';
 import { isExclusionViolationError } from './lib/errors.js'; // Importa la funzione di type guard
 import { sendConfirmationEmail } from './lib/mailer.js';
-import { Prisma } from '../generated/prisma/index.js';
+import { Prisma, type Tenant, type User } from '../generated/prisma/index.js';
 import cors from 'cors';
+
 
 
 
@@ -83,39 +84,138 @@ app.use(express.json());
 
 // registrazione nuova azienda di co-working
 app.post("/api/tenants", async (req, res) => {
-    const { name, slug } = req.body;
 
-    if (!name || !slug) {
+    const {firstName, lastName, email, password, slug, name}=req.body;
+
+    if (!firstName || !slug || !lastName || !email || !password || !name) {
         return res.status(400).json({ error: "Per favore, compila tutti i campi" });
     }
 
-    try {
-        const newTenant = await prisma.tenant.create({
-            data: {
-                name,
+    try{
+        const slugChecker= await prisma.tenant.findUnique({
+            where:{
                 slug,
             },
         });
 
-        return res.status(201).json(newTenant);
-    }catch (error) {
-        if (error instanceof Prisma.PrismaClientKnownRequestError) {
-            // P2002: violazione di vincolo @unique. Su Tenant l'unico campo
-            // @unique è slug, quindi il messaggio è accurato senza doverlo
-            // ricavare dall'errore. Il campo violato sarebbe leggibile solo
-            // da meta.driverAdapterError.cause.constraint.fields, struttura
-            // interna dell'adapter pg, non documentata e non tipizzata.
-            // Se in futuro Tenant avrà altri @unique, questo ramo va rivisto.
-            if (error.code === "P2002") {
-                return res.status(409).json({
-                    error: "Questo codice azienda è già in uso.",
-                    code: "SLUG_ALREADY_EXISTS"
-                });
-            }
+        if(slugChecker){
+            return res.status(409).json({error:'Questo codice azienda è già in uso.', code:"SLUG_ALREADY_EXISTS"});
         }
 
+        const emailChecker= await prisma.user.findUnique({
+            where:{
+            email,
+            },
+        });
+
+        if(emailChecker){
+            //il messaggio di errore è volutamente generico.non conferma che l'email sia registrata. 
+            // In signup è esplicito (EMAIL_UNCONFIRMED /EMAIL_ALREADY_REGISTERED) perché lì l'informazione sblocca un percorso
+            // reale — login o recupero password.
+            return res.status(409).json({error: "non è possibile registrare un nuovo spazio con questa email; se hai già un account, accedi — per aprire un nuovo spazio usa un'altra email",
+                code:"FOUNDER_REGISTRATION_REFUSED"
+            });
+        }
+
+        const {data:authData, error:authError}= await supabaseAdmin.auth.admin.createUser({
+            email,
+            password,
+        });
+
+        //Supabase non lancia errori intercettabili da catch ma vanno intercettati esplicitamente
+        if (authError) {
+            console.error("Errore createUser fondatore", authError.message);
+            return res.status(409).json({error: "non è possibile registrare un nuovo spazio con questa email; se hai già un account, accedi — per aprire un nuovo spazio usa un'altra email",
+                code:"FOUNDER_REGISTRATION_REFUSED"});
+        }
+
+        if (!authData?.user) {
+            return res.status(500).json({ error: "Utente Supabase non disponibile." });
+        }
+
+        const founderAuthId=authData.user.id;
+        
+        let result: {tenant:Tenant, founder:User};
+
+        try{
+            result = await prisma.$transaction(async (tx) =>{
+
+                const newTenant= await tx.tenant.create({
+                    data:{
+                        name,
+                        slug,
+                    },
+                });
+
+                const newFounder= await tx.user.create({
+                    data:{
+                        id:founderAuthId,
+                        firstName,
+                        lastName,
+                        email,
+                        role:"TENANTADMIN",
+                        tenantId:newTenant.id
+                    },
+                });
+
+                return {tenant:newTenant, founder:newFounder};
+
+            });
+
+        }catch(error){
+
+            console.error("Errore transazione creazione tenant + fondatore:", error);
+            // Pulizia best-effort dell'utente Auth:(niente Tenant, niente User), ma Supabase è fuori dal confine tx e non
+            // viene annullato. Si cancella per sub e MAI per email: nella race TOCTOU
+            // l'utente dell'altra richiesta ha la stessa email ma sub diverso.
+            // DEBITO NOTO: se la pulizia fallisce, l'orfano Auth sopravvive e
+            // REGISTRATION_FAILED_RETRY promette un retry che sbatterà su
+            // users_email_partial_key.
+            try{
+                await supabaseAdmin.auth.admin.deleteUser(founderAuthId);
+            } catch (deleteError) {
+                console.error("Errore durante il tentativo di eliminare l'utente:", deleteError);
+            }
+            if (error instanceof Prisma.PrismaClientKnownRequestError) {
+                if(error.code === "P2002"){
+                    return res.status(409).json({error:"Questo codice azienda è già in uso.", code:"SLUG_ALREADY_EXISTS"});
+                }
+            }
+
+            return res.status(500).json({error:"Errore durante la creazione del tenant e del fondatore.", code:"REGISTRATION_FAILED_RETRY"});
+        }
+
+        const {data:linkData, error:linkError}= await supabaseAdmin.auth.admin.generateLink({
+            type:'signup',
+            email:email,
+            password:password
+        });
+
+        if(linkError){
+            return res.status(201).json({
+                message:"Utente registrato, ma non è possibile generare il link di conferma",
+                user:result.founder,
+                tenant:result.tenant,
+                code:"LINK_GENERATION_FAILED"
+
+            })
+        }
+
+            const emailResult=await sendConfirmationEmail(email, linkData.properties.action_link);
+
+            return res.status(201).json({
+                message: emailResult.emailSent
+                ? "Utente registrato ed email di conferma inviata."
+                : "Utente registrato, ma non è stato possibile inviare l'email di conferma.",
+                user:result.founder,
+                tenant:result.tenant,
+                emailSent:emailResult.emailSent,
+                ...(emailResult.error && {code:"EMAIL_SEND_FAILED"})
+            });
+
+    }catch (error) {
         console.error("Errore durante la creazione del tenant:", error);
-        return res.status(500).json({ error: "Errore durante la registrazione" });
+        return res.status(500).json({error:"Errore durante la registrazione.", code:"FOUNDER_REGISTRATION_FAILED"});
     }
 });
 
