@@ -79,7 +79,7 @@ if(!corsOrigin){
 app.use(cors({origin:corsOrigin}));
 
 app.use(express.json());
-app.use(authRouter); // Monta il router per le rotte autenticate.
+app.use(authRouter); // Rotte di identità: registrazione fondatore, signup membri, /api/me.
 app.use(roomsRouter); // Monta il router delle stanze
 app.use(bookingsRouter); //Monta il router per le bookings.
 
