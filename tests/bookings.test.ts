@@ -175,9 +175,20 @@ describe('Test prenotazioni concorrenti', () =>{
             const error = result.reason;
             expect(isExclusionViolationError(error)).toBe(true);
             if(isExclusionViolationError(error)){
-                expect(error.cause.code).toBe('23P01')
+            // 23P01: violazione dell'exclusion constraint (una insert ha già fatto commit).
+            // 40P01: deadlock documentato di Postgres tra insert concorrenti sullo stesso range; il vincolo regge comunque.`
+                expect(['23P01', '40P01']).toContain(error.cause.code);
             }
         }
+
+        const bookingCount=await prisma.booking.count({
+            where:{
+                roomId:1,
+                userId:memberA.userId
+            },
+        });
+
+        expect(bookingCount).toBe(1);
     });
 
 });
