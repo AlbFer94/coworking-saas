@@ -100,7 +100,7 @@ authRouter.post("/api/tenants", async (req, res) => {
             // l'utente dell'altra richiesta ha la stessa email ma sub diverso.
             // DEBITO NOTO: se la pulizia fallisce, l'orfano Auth sopravvive e
             // REGISTRATION_FAILED_RETRY promette un retry che sbatterà su
-            // users_email_partial_key.
+            // User_email_key (unique globale: conta anche gli utenti soft-deleted).
             try {
                 await supabaseAdmin.auth.admin.deleteUser(founderAuthId);
             } catch (deleteError) {

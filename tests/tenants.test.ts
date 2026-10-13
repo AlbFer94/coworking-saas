@@ -174,18 +174,18 @@ describe('POST /api/tenants', () => {
         expect(createUserSpy).not.toHaveBeenCalled();
     });
 
-    test('Test 3b: testa la risposta con email esistente. Deve ritornare status 409 code:FOUNDER_REGISTRATION_REFUSED.', async () =>{
+    test('Test 3b: testa la risposta con email esistente. Deve ritornare status 409 code:FOUNDER_REGISTRATION_REFUSED.', async () => {
 
-        const user= await prisma.user.findUnique({
-            where:{
-                id:memberA.userId
+        const user = await prisma.user.findUnique({
+            where: {
+                id: memberA.userId
             },
-            select:{
-                email:true
+            select: {
+                email: true
             },
         });
 
-        if(!user){
+        if (!user) {
             throw new Error("fixture memberA non trovato");
         }
 
@@ -197,6 +197,54 @@ describe('POST /api/tenants', () => {
         expect(res.status).toBe(409);
         expect(res.body.code).toBe('FOUNDER_REGISTRATION_REFUSED');
         expect(createUserSpy).not.toHaveBeenCalled();
+    });
+
+    test('Test 3c: testa la chiamata con email di utente soft-deleted. Deve ritornare status 409 code:FOUNDER_REGISTRATION_REFUSED.', async () => {
+
+        const uniqueSuffix = `${Date.now()}-${randomUUID().slice(0, 8)}`;
+
+
+
+        const deletedUserTenant = await prisma.tenant.create({
+            data: {
+                name: "test-n",
+                slug: `soft-deleted-${uniqueSuffix}`,
+                users: {
+                    create: {
+                        firstName: "soft",
+                        lastName: "deleted",
+                        email: `softdeleted-${uniqueSuffix}@example.com`,
+                        id: randomUUID(),
+                        deletedAt: new Date()
+                    },
+                },
+            },
+            include: {
+                users: true,
+            },
+        });
+
+        try {
+
+            expect(deletedUserTenant.users[0].deletedAt).not.toBeNull();
+
+
+            const res = await request(app).post("/api/tenants").send({
+                ...payload,
+                email: deletedUserTenant.users[0].email,
+            });
+
+            expect(res.status).toBe(409);
+            expect(res.body.code).toBe("FOUNDER_REGISTRATION_REFUSED");
+            expect(createUserSpy).not.toHaveBeenCalled();
+
+        } finally {
+            await prisma.tenant.deleteMany({
+                where: {
+                    slug: deletedUserTenant.slug,
+                },
+            });
+        }
     });
 });
 
