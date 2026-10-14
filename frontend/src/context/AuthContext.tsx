@@ -1,6 +1,5 @@
 import { supabase } from "../lib/supabase";
 import React, { createContext, useState, useContext, useEffect } from "react";
-import type { User } from "@supabase/supabase-js";
 
 interface AuthProviderProps {
     children: React.ReactNode
@@ -41,32 +40,46 @@ export const useAuth = () => {
     return context;
 };
 
-// Trasforma l'oggetto "User" grezzo di Supabase (input) nella forma
-// piatta AuthContextType['user'] (output) che usa il resto dell'app.
-// Nota: NON è l'intero AuthContextType — solo il pezzo "user" — perché
-// isLogged/isSessionChecked sono gestiti a parte dal Provider.
-function mapSupabaseUser(user: User | null): AuthContextType['user'] {
-    if (!user) return null;
+// tipo per gestione chiamata a /api/me. 
+// Oltre all'esito ok con payload user e all'error, viene dichiarato il caso rejected evitando che 
+// il listener imposti isLogged = true, deve chiamare signOut() e uscire.
+type ProfileResult =
+    | { message: "rejected" }
+    | { message: "error" }
+    | { message: "ok"; user: NonNullable<AuthContextType["user"]> };
 
-    // user_metadata è tipizzato da Supabase come { [key: string]: any },
-    // quindi accedo alle proprietà senza cast "as any": il tipo
-    // generico lo permette già, senza disattivare i controlli di TS.
-    const metadata = (user.user_metadata) || {};
+async function fetchProfile(accessToken: string): Promise<ProfileResult> {
 
-    // Non esiste un campo "name" diretto su Supabase: va costruito
-    // unendo firstName + lastName salvati in user_metadata al signup.
-    // Fallback singoli per evitare "undefined undefined" se mancano.
-    const first = metadata.firstName || '';
-    const last = metadata.lastName || '';
+    try {
+        const response = await fetch(`${import.meta.env.VITE_API_URL}/api/me`, {
+            headers: {
+                Authorization: `Bearer ${accessToken}`,
+            },
+        });
 
-    return {
-        id: user.id,
-        // .trim() rimuove lo spazio residuo nel caso limite in cui
-        // sia first che last siano stringhe vuote.
-        name: `${first} ${last}`.trim(),
-        email: user.email || '',
-        role: metadata.role || ''
-    };
+        if (response.status === 401 || response.status === 403) {
+            return { message: "rejected" };
+        }
+
+        if (!response.ok) {
+            console.error("Errore durante il recupero del profilo /api/me:", response.status);
+            return { message: "error" };
+        }
+
+        const data = await response.json();
+        return {
+            message: "ok", user: {
+                id: data.user.id,
+                name: `${data.user.firstName} ${data.user.lastName}`.trim(),
+                email: data.user.email,
+                role: data.user.role
+            }
+        };
+
+    } catch (error) {
+        console.error("Errore durante il recupero del profilo /api/me:", error);
+        return { message: "error" };
+    }
 }
 
 const AuthProvider = (props: AuthProviderProps) => {
@@ -96,7 +109,26 @@ const AuthProvider = (props: AuthProviderProps) => {
                         return;
                     }
 
-                    setUser(mapSupabaseUser(session?.user || null))
+                    // Profilo canonico dalla tabella User via backend, non da user_metadata (scrivibile dal client).
+                    const profile = await fetchProfile(session.access_token);
+
+                    if (profile.message === "rejected") {
+                        // Il server rifiuta questa sessione (401/403, es. utente soft-deleted): tenerla aperta
+                        // lascerebbe lo stato incoerente. signOut fa scattare SIGNED_OUT, che rientra in questo
+                        // listener nel ramo else e azzera user/isLogged/isSessionChecked: qui nessun set.
+                        const { error } = await supabase.auth.signOut();
+                        if (error) {
+                            console.error("Errore durante il logout forzato:", error);
+                        }
+                        return;
+                    }
+
+                    if (profile.message === "ok") {
+                        setUser(profile.user); // TS sa che .user esiste solo in questo ramo (discriminated union)
+                    } else {
+                        // Guasto temporaneo (500/rete): la sessione resta valida, il profilo no.
+                        setUser(null);
+                    }
                     setIsLogged(!!session)
                     setIsSessionChecked(true)
                 } else {
