@@ -224,7 +224,6 @@ authRouter.post("/api/auth/signup", async (req, res) => {
             const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
                 email,
                 password,
-                user_metadata: { firstName, lastName, tenantId, role: "MEMBER" }
             });
 
             //Supabase non lancia errori intercettabili da catch ma vanno intercettati esplicitamente
