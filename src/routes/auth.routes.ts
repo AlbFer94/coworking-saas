@@ -6,6 +6,10 @@ import { sendConfirmationEmail } from '../lib/mailer.js';
 import { Prisma, type Tenant, type User } from '../../generated/prisma/index.js';
 import type { Request, Response } from 'express';
 
+const frontendUrl= process.env.FRONTEND_URL;
+if(!frontendUrl){
+    throw new Error("FRONTEND_URL non definita. Impostala nel file .env. ed .env.test");
+}
 
 export const authRouter = Router();
 
@@ -118,7 +122,8 @@ authRouter.post("/api/tenants", async (req, res) => {
         const { data: linkData, error: linkError } = await supabaseAdmin.auth.admin.generateLink({
             type: 'signup',
             email: email,
-            password: password
+            password: password,
+            options:{redirectTo: `${frontendUrl}/login`},
         });
 
         if (linkError) {
@@ -250,7 +255,8 @@ authRouter.post("/api/auth/signup", async (req, res) => {
             const { data, error } = await supabaseAdmin.auth.admin.generateLink({
                 type: 'signup',
                 email: email,
-                password: password
+                password: password,
+                options:{redirectTo: `${frontendUrl}/login`},
             });
 
             if (error) {

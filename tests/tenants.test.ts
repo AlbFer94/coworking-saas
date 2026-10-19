@@ -87,6 +87,13 @@ describe('POST /api/tenants', () => {
         expect(createUserSpy).toHaveBeenCalledTimes(1);
         expect(deleteUserSpy).not.toHaveBeenCalled();
         expect(generateLinkSpy).toHaveBeenCalledTimes(1);
+        expect(generateLinkSpy).toHaveBeenCalledWith(expect.objectContaining({
+            options: expect.objectContaining({
+                redirectTo: `${process.env.FRONTEND_URL}/login`,
+            }),
+            email: payload.email,
+            password: payload.password,
+        }));
 
         const user = await prisma.user.findUnique({
             where: { email: payload.email },
